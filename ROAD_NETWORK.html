@@ -1,0 +1,980 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Blantyre City Road Network</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* Layout: blue header band, then simple white cards in an auto-fit grid (stacks on phones). */
+:root {
+  --bg: #F2F5F9; --card: #FFFFFF; --ink: #172033; --muted: #526174; --line: #CCD6E2;
+  --brand: #174A7E; --onBrand: #FFFFFF; --soft: #EEF5FC;
+  --route: #C8102E; --tree: #D15B28; --pass: #1C7A47; --edge: #9AA8B8;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0F1620; --card: #17212D; --ink: #E4EBF3; --muted: #95A4B6; --line: #2A3A4C;
+    --brand: #1E5A96; --onBrand: #FFFFFF; --soft: #1D2B3A;
+    --route: #FF5C70; --tree: #F08A50; --pass: #45C281; --edge: #5E6F83; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0F1620; --card: #17212D; --ink: #E4EBF3; --muted: #95A4B6; --line: #2A3A4C;
+  --brand: #1E5A96; --onBrand: #FFFFFF; --soft: #1D2B3A;
+  --route: #FF5C70; --tree: #F08A50; --pass: #45C281; --edge: #5E6F83; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: var(--bg); color: var(--ink); }
+header { background: var(--brand); color: var(--onBrand); padding-block: 22px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+header .in { max-width: 1100px; margin: 0 auto; }
+header h1 { margin: 0 0 4px; font-size: 1.9rem; line-height: 1.2; }
+main { max-width: 1100px; margin: 0 auto; padding-block: 16px 32px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; min-width: 0; }
+.card h2 { margin: 0 0 10px; font-size: 1.25rem; }
+label.lab { display: block; font-weight: 600; font-size: 0.92rem; margin-top: 4px; }
+select, input[type=text], button { font: inherit; padding: 9px; border-radius: 7px; border: 1px solid var(--line); width: 100%; margin: 4px 0 8px; background: var(--card); color: var(--ink); }
+.picker { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+@media (max-width: 420px) { .picker { grid-template-columns: 1fr; } }
+.picker select, .picker input { margin: 4px 0 2px; }
+.hint { font-size: 0.82rem; color: var(--muted); min-height: 1.2em; margin-bottom: 6px; }
+.hint.bad { color: var(--route); font-weight: 600; }
+button { background: var(--brand); color: var(--onBrand); font-weight: 700; cursor: pointer; border-color: var(--brand); }
+button.light { background: var(--card); color: var(--brand); }
+button:focus-visible, select:focus-visible, input:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; } .row > * { flex: 1 1 140px; }
+.metric { font-size: 1.8rem; font-weight: 700; margin: 4px 0; font-variant-numeric: tabular-nums; }
+.route { background: var(--soft); padding: 10px; border-radius: 7px; }
+.sum { font-family: Consolas, "Courier New", monospace; font-size: 0.88rem; color: var(--muted); margin-top: 6px; }
+.err { color: var(--route); font-weight: 700; }
+.muted { color: var(--muted); font-size: 0.9rem; }
+.check { display: flex; gap: 8px; align-items: center; font-size: 0.92rem; margin: 0 0 8px; }
+.scroll { max-height: 340px; overflow: auto; }
+table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+th, td { text-align: left; border-bottom: 1px solid var(--line); padding: 6px; font-size: 0.9rem; vertical-align: top; }
+th { position: sticky; top: 0; background: var(--card); }
+td.r, th.r { text-align: right; white-space: nowrap; }
+tr.pass td:last-child { color: var(--pass); font-weight: 700; } tr.fail td:last-child { color: var(--route); font-weight: 700; }
+.mapwrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--card); }
+svg.map { display: block; width: 100%; min-width: 620px; height: auto; }
+.e line { stroke: var(--edge); stroke-width: 3; }
+.e text { font: 600 26px system-ui, sans-serif; fill: var(--muted); paint-order: stroke; stroke: var(--card); stroke-width: 7px; stroke-linejoin: round; }
+.e.path line { stroke: var(--route); stroke-width: 9; } .e.path text { fill: var(--route); }
+.e.tree line { stroke: var(--tree); stroke-width: 8; } .e.tree text { fill: var(--tree); }
+.e.faded line { opacity: 0.35; }
+.n circle { fill: var(--card); stroke: var(--brand); stroke-width: 4; }
+.n .num { font: 700 23px system-ui, sans-serif; fill: var(--ink); text-anchor: middle; dominant-baseline: central; }
+.n .lbl { font: 600 28px system-ui, sans-serif; fill: var(--ink); paint-order: stroke; stroke: var(--card); stroke-width: 7px; stroke-linejoin: round; }
+.n.on circle { fill: var(--route); stroke: var(--route); } .n.on .num { fill: #fff; }
+.n.end circle { stroke-width: 8; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 22px; border-top: 5px solid; display: inline-block; }
+pre { font: 0.78rem/1.5 Consolas, "Courier New", monospace; background: var(--soft); padding: 10px; border-radius: 7px; max-height: 340px; overflow: auto; margin: 8px 0 0; }
+.pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 700; }
+.pill.ok { color: var(--pass); border: 1px solid var(--pass); } .pill.bad { color: var(--route); border: 1px solid var(--route); }
+</style>
+
+</head>
+<body>
+<header><div class="in">
+  <h1>Blantyre City Road Network</h1>
+  DSA Assignment 2026 · Limbe Market to Blantyre Market · Dijkstra · Kruskal · Prim
+</div></header>
+
+<main>
+  <div class="grid">
+    <section class="card">
+      <h2>Shortest route (Dijkstra)</h2>
+      <label class="lab" for="sSel">Starting place</label>
+      <div class="picker"><select id="sSel" aria-label="Starting place list"></select><input type="text" id="sTxt" placeholder="or type a name or number" aria-label="Type starting place"></div>
+      <div class="hint" id="sHint"></div>
+      <label class="lab" for="tSel">Destination</label>
+      <div class="picker"><select id="tSel" aria-label="Destination list"></select><input type="text" id="tTxt" placeholder="or type a name or number" aria-label="Type destination"></div>
+      <div class="hint" id="tHint"></div>
+      <label class="check"><input type="checkbox" id="steps"> Show how Dijkstra works, step by step</label>
+      <button id="go">Find route</button>
+      <div id="out"></div>
+    </section>
+
+    <section class="card">
+      <h2>Minimum spanning tree</h2>
+      <label class="lab" for="alg">Algorithm</label>
+      <select id="alg"><option value="kruskal">Kruskal (recommended for this sparse graph)</option><option value="prim">Prim</option></select>
+      <label class="lab" for="pSel">Prim start place</label>
+      <div class="picker"><select id="pSel" aria-label="Prim start place list"></select><input type="text" id="pTxt" placeholder="or type a name or number" aria-label="Type Prim start place"></div>
+      <div class="hint" id="pHint"></div>
+      <button id="mst">Build MST</button>
+      <div id="mo"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Graph drawing</h2>
+    <div class="mapwrap"><svg class="map" id="graph" viewBox="-175 150 2425 1235" role="img" aria-label="Weighted graph of 22 places and 32 roads, laid out as in the hand drawing"></svg></div>
+    <div class="legend muted"><span><i class="sw" style="border-color:var(--edge)"></i>Road, distance in km</span><span><i class="sw" style="border-color:var(--route)"></i>Shortest route</span><span><i class="sw" style="border-color:var(--tree)"></i>Minimum spanning tree</span></div>
+    <p class="muted">Same layout, numbering and distances as the hand-drawn graph. The graph is undirected and weighted: 22 places, 32 two-way roads.</p>
+  </section>
+
+  <div class="grid">
+    <section class="card">
+      <h2>Distances to all 22 places</h2>
+      <label class="lab" for="aSel">Source</label>
+      <div class="picker"><select id="aSel" aria-label="Source list"></select><input type="text" id="aTxt" placeholder="or type a name or number" aria-label="Type source"></div>
+      <div class="hint" id="aHint"></div>
+      <button id="allgo">Calculate all distances</button>
+      <div class="scroll" id="allout"></div>
+    </section>
+
+    <section class="card">
+      <h2>Road data</h2>
+      <p id="stats"></p>
+      <div class="scroll"><table><thead><tr><th>No.</th><th>From</th><th>To</th><th class="r">km</th></tr></thead><tbody id="edges"></tbody></table></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <h2>Browser tests</h2>
+    <p class="muted">The same 25 tests as the C++ program: normal routes, special cases, invalid input and the MST.</p>
+    <button id="test">Run tests</button>
+    <div id="tests"></div>
+  </section>
+
+  <section class="card">
+    <h2>C++ program</h2>
+    <p class="muted">To run it without installing anything: copy the code, open onlinegdb.com, choose C++, paste and press Run. Menu option 4 runs all 25 tests.</p>
+    <div class="row"><button id="copy">Copy C++ code</button><button class="light" id="toggleCode">Show code</button></div>
+    <div class="hint" id="copyMsg" aria-live="polite"></div>
+    <pre id="code" hidden></pre>
+  </section>
+</main>
+
+<script type="text/plain" id="cppSource">
+// =====================================================================
+//  DSA Assignment 2026 - Blantyre City Road Network
+//  Shortest routes (Dijkstra) and Minimum Spanning Tree (Kruskal, Prim)
+//  22 places, 32 roads, distances stored in metres.
+//
+//  Works on any C++ compiler (C++98 or newer): Dev-C++, Code::Blocks,
+//  Visual Studio, g++, OnlineGDB.
+//
+//  Compile:  g++ -o roads main.cpp
+//  Run:      roads          (menu)
+//            roads test     (run the 25 automated tests only)
+// =====================================================================
+#include <algorithm>
+#include <cctype>
+#include <cstdio>
+#include <iostream>
+#include <map>
+#include <queue>
+#include <sstream>
+#include <stdexcept>
+#include <string>
+#include <vector>
+using namespace std;
+
+const long long INF = 1000000000000000000LL;
+
+// ---------------------------------------------------------------------
+// 1. THE ROAD DATA: "Place A,Place B,distance in metres"
+// ---------------------------------------------------------------------
+const string ROAD_DATA =
+    "Limbe Market,Limbe Health Centre,450\n"
+    "Limbe Market,Liquid Lounge Roundabout,700\n"
+    "Limbe Market,Yanakis Roundabout,1200\n"
+    "Limbe Health Centre,Liquid Lounge Roundabout,350\n"
+    "Limbe Health Centre,St Columba,3200\n"
+    "Liquid Lounge Roundabout,Puma Energy Kanjedza,1000\n"
+    "Liquid Lounge Roundabout,MASM,550\n"
+    "MASM,Yanakis Roundabout,1000\n"
+    "Yanakis Roundabout,Reunion Insurance Roundabout,1100\n"
+    "Reunion Insurance Roundabout,Independence Arch,1000\n"
+    "Puma Energy Kanjedza,Automotive Products Limited,1600\n"
+    "Puma Energy Kanjedza,Independence Arch,2900\n"
+    "Automotive Products Limited,St Columba,850\n"
+    "Automotive Products Limited,Kamba Pork Market,2500\n"
+    "Automotive Products Limited,Chichiri Shopping Mall,1500\n"
+    "Independence Arch,Chichiri Shopping Mall,2900\n"
+    "St Columba,Stereo Night Club,3100\n"
+    "Kamba Pork Market,Stereo Night Club,300\n"
+    "Kamba Pork Market,Red Cross Malawi,1200\n"
+    "Stereo Night Club,Rosewood Mall,700\n"
+    "Rosewood Mall,CI Primary School,1600\n"
+    "Rosewood Mall,Red Cross Malawi,1400\n"
+    "Red Cross Malawi,Mandala,550\n"
+    "Red Cross Malawi,Chichiri Shopping Mall,2300\n"
+    "Red Cross Malawi,Blantyre Clock Tower,3400\n"
+    "Mandala,Blantyre Market,210\n"
+    "CI Primary School,Blantyre Market,300\n"
+    "Blantyre Market,PA Nandos,1200\n"
+    "PA Nandos,Blantyre Clock Tower,1200\n"
+    "Chichiri Shopping Mall,Castel,1900\n"
+    "Castel,HHI,1400\n"
+    "HHI,Blantyre Clock Tower,2500\n";
+
+// ---------------------------------------------------------------------
+// Small helpers
+// ---------------------------------------------------------------------
+string toStr(long long n) {
+    ostringstream out;
+    out << n;
+    return out.str();
+}
+
+string km(long long metres) {
+    char buf[32];
+    sprintf(buf, "%.2f km", metres / 1000.0);
+    return string(buf);
+}
+
+// ---------------------------------------------------------------------
+// 2. THE GRAPH (adjacency list)
+// ---------------------------------------------------------------------
+struct Edge {
+    int u, v;          // the two places joined by the road
+    long long w;       // length in metres
+};
+
+struct Neighbour {
+    int place;
+    long long w;
+};
+
+struct Graph {
+    map<string, int> id;                   // place name -> number
+    vector<string> name;                   // number -> place name
+    vector< vector<Neighbour> > adj;       // adj[u] = roads leaving u
+    vector<Edge> edges;                    // every road once
+
+    int addPlace(const string& p) {
+        if (p.empty()) throw invalid_argument("empty place name");
+        if (id.count(p)) return id[p];
+        int n = (int)name.size();
+        id[p] = n;
+        name.push_back(p);
+        adj.push_back(vector<Neighbour>());
+        return n;
+    }
+
+    void addRoad(const string& a, const string& b, long long w) {
+        if (w < 0)  throw invalid_argument("negative road length: " + a + " - " + b);
+        if (a == b) throw invalid_argument("self-loop not allowed: " + a);
+        int u = addPlace(a);
+        int v = addPlace(b);
+        Neighbour toV = { v, w };
+        Neighbour toU = { u, w };
+        adj[u].push_back(toV);             // undirected: store both directions
+        adj[v].push_back(toU);
+        Edge e = { u, v, w };
+        edges.push_back(e);
+    }
+
+    int getId(const string& p) const {
+        map<string, int>::const_iterator it = id.find(p);
+        if (it == id.end()) throw invalid_argument("unknown place: " + p);
+        return it->second;
+    }
+
+    int V() const { return (int)name.size(); }
+    int E() const { return (int)edges.size(); }
+};
+
+// Read roads from text, one per line: "Place A,Place B,metres"
+Graph loadGraph(const string& text) {
+    Graph g;
+    stringstream in(text);
+    string line;
+    int lineNo = 0;
+    while (getline(in, line)) {
+        lineNo++;
+        if (line.empty()) continue;
+        stringstream ss(line);
+        string a, b, w;
+        if (!getline(ss, a, ',') || !getline(ss, b, ',') || !getline(ss, w))
+            throw invalid_argument("bad format on line " + toStr(lineNo));
+
+        // convert the distance text to a number, checking every character
+        long long metres = 0;
+        bool negative = false;
+        for (size_t i = 0; i < w.size(); i++) {
+            if (i == 0 && w[i] == '-') { negative = true; continue; }
+            if (!isdigit((unsigned char)w[i]))
+                throw invalid_argument("bad distance on line " + toStr(lineNo));
+            metres = metres * 10 + (w[i] - '0');
+        }
+        if (w.empty() || w == "-") throw invalid_argument("bad distance on line " + toStr(lineNo));
+        if (negative) metres = -metres;
+
+        g.addRoad(a, b, metres);
+    }
+    return g;
+}
+
+// ---------------------------------------------------------------------
+// 3. DIJKSTRA'S ALGORITHM (binary heap)
+// ---------------------------------------------------------------------
+struct QueueItem {
+    long long dist;
+    int place;
+};
+// makes priority_queue give the SMALLEST distance first
+struct SmallerFirst {
+    bool operator()(const QueueItem& a, const QueueItem& b) const {
+        if (a.dist != b.dist) return a.dist > b.dist;
+        return a.place > b.place;
+    }
+};
+
+// Returns the shortest distance from src to every place; prev[] stores
+// the previous place on each shortest route.
+vector<long long> dijkstra(const Graph& g, int src, vector<int>& prev, bool showSteps) {
+    vector<long long> dist(g.V(), INF);
+    prev.assign(g.V(), -1);
+    priority_queue<QueueItem, vector<QueueItem>, SmallerFirst> pq;
+
+    dist[src] = 0;
+    QueueItem start = { 0, src };
+    pq.push(start);
+    int step = 0;
+
+    while (!pq.empty()) {
+        QueueItem top = pq.top();
+        pq.pop();
+        int u = top.place;
+        if (top.dist > dist[u]) continue;              // stale entry: ignore
+
+        if (showSteps)
+            cout << "Step " << ++step << ": settle " << g.name[u] << " (" << km(dist[u]) << ")\n";
+
+        for (size_t i = 0; i < g.adj[u].size(); i++) {
+            int v = g.adj[u][i].place;
+            long long w = g.adj[u][i].w;
+            if (dist[u] + w < dist[v]) {               // relaxation
+                if (showSteps)
+                    cout << "     update " << g.name[v] << ": "
+                         << (dist[v] == INF ? string("inf") : km(dist[v]))
+                         << " -> " << km(dist[u] + w) << "\n";
+                dist[v] = dist[u] + w;
+                prev[v] = u;
+                QueueItem item = { dist[v], v };
+                pq.push(item);
+            }
+        }
+    }
+    return dist;
+}
+
+// Shortest route between two named places. Returns the distance (INF if none)
+// and fills 'route' with the places in order.
+long long shortestRoute(const Graph& g, const string& from, const string& to,
+                        vector<string>& route, bool showSteps = false) {
+    int s = g.getId(from);
+    int t = g.getId(to);
+    vector<int> prev;
+    vector<long long> dist = dijkstra(g, s, prev, showSteps);
+    route.clear();
+    if (dist[t] == INF) return INF;
+    for (int x = t; x != -1; x = prev[x]) route.push_back(g.name[x]);
+    reverse(route.begin(), route.end());
+    return dist[t];
+}
+
+// ---------------------------------------------------------------------
+// 4. KRUSKAL'S ALGORITHM (sorted edges + union-find)
+// ---------------------------------------------------------------------
+vector<int> parent;
+
+int findSet(int x) {
+    while (parent[x] != x) {
+        parent[x] = parent[parent[x]];                 // path compression
+        x = parent[x];
+    }
+    return x;
+}
+
+bool shorterRoad(const Edge& a, const Edge& b) { return a.w < b.w; }
+
+vector<Edge> kruskal(const Graph& g) {
+    vector<Edge> sorted = g.edges;
+    stable_sort(sorted.begin(), sorted.end(), shorterRoad);
+    parent.resize(g.V());
+    for (int i = 0; i < g.V(); i++) parent[i] = i;
+
+    vector<Edge> tree;
+    for (size_t i = 0; i < sorted.size(); i++) {
+        int a = findSet(sorted[i].u);
+        int b = findSet(sorted[i].v);
+        if (a == b) continue;                          // would make a cycle
+        parent[a] = b;
+        tree.push_back(sorted[i]);
+        if ((int)tree.size() == g.V() - 1) break;
+    }
+    return tree;
+}
+
+// ---------------------------------------------------------------------
+// 5. PRIM'S ALGORITHM (binary heap)
+// ---------------------------------------------------------------------
+struct PrimItem {
+    long long w;
+    int from, to;
+};
+struct LighterFirst {
+    bool operator()(const PrimItem& a, const PrimItem& b) const {
+        if (a.w != b.w) return a.w > b.w;
+        return a.to > b.to;
+    }
+};
+
+vector<Edge> prim(const Graph& g, int start) {
+    vector<bool> inTree(g.V(), false);
+    vector<Edge> tree;
+    priority_queue<PrimItem, vector<PrimItem>, LighterFirst> pq;
+
+    inTree[start] = true;
+    for (size_t i = 0; i < g.adj[start].size(); i++) {
+        PrimItem it = { g.adj[start][i].w, start, g.adj[start][i].place };
+        pq.push(it);
+    }
+
+    while (!pq.empty() && (int)tree.size() < g.V() - 1) {
+        PrimItem top = pq.top();
+        pq.pop();
+        if (inTree[top.to]) continue;
+        inTree[top.to] = true;
+        Edge e = { top.from, top.to, top.w };
+        tree.push_back(e);
+        for (size_t i = 0; i < g.adj[top.to].size(); i++) {
+            int x = g.adj[top.to][i].place;
+            if (!inTree[x]) {
+                PrimItem it = { g.adj[top.to][i].w, top.to, x };
+                pq.push(it);
+            }
+        }
+    }
+    return tree;
+}
+
+long long totalLength(const vector<Edge>& es) {
+    long long sum = 0;
+    for (size_t i = 0; i < es.size(); i++) sum += es[i].w;
+    return sum;
+}
+
+// Graph made of only some roads (used to measure a route inside the MST)
+Graph subgraph(const Graph& g, const vector<Edge>& es) {
+    Graph h;
+    for (int i = 0; i < g.V(); i++) h.addPlace(g.name[i]);
+    for (size_t i = 0; i < es.size(); i++)
+        h.addRoad(g.name[es[i].u], g.name[es[i].v], es[i].w);
+    return h;
+}
+
+// ---------------------------------------------------------------------
+// 6. AUTOMATED TESTS
+// ---------------------------------------------------------------------
+int passed = 0, failed = 0;
+
+void check(int n, const string& test, const string& expected, const string& actual) {
+    bool ok = (expected == actual);
+    if (ok) passed++; else failed++;
+    cout << "T" << n << " | " << test << " | expected: " << expected
+         << " | actual: " << actual << " | " << (ok ? "PASS" : "FAIL") << "\n";
+}
+
+// shortest distance as text, e.g. "7.76 km" or "no route"
+string distText(const Graph& g, const string& a, const string& b) {
+    vector<string> r;
+    long long d = shortestRoute(g, a, b, r);
+    return d == INF ? string("no route") : km(d);
+}
+
+// load bad road data and return the error message it causes
+string errorFrom(const string& roads) {
+    try { loadGraph(roads); return "no error"; }
+    catch (exception& e) { return string("error: ") + e.what(); }
+}
+
+string join(const vector<string>& route) {
+    string s;
+    for (size_t i = 0; i < route.size(); i++) s += (i ? " > " : "") + route[i];
+    return s;
+}
+
+void runTests() {
+    passed = failed = 0;
+    Graph g = loadGraph(ROAD_DATA);
+    vector<string> r;
+
+    check(1, "Number of places loaded", "22", toStr(g.V()));
+    check(2, "Number of roads loaded", "32", toStr(g.E()));
+    check(3, "Total road length", "46.06 km", km(totalLength(g.edges)));
+    check(4, "Limbe Market to Blantyre Market", "7.76 km", distText(g, "Limbe Market", "Blantyre Market"));
+    shortestRoute(g, "Limbe Market", "Blantyre Market", r);
+    check(5, "Route Limbe Market to Blantyre Market",
+          "Limbe Market > Liquid Lounge Roundabout > Puma Energy Kanjedza > Automotive Products Limited > "
+          "Kamba Pork Market > Red Cross Malawi > Mandala > Blantyre Market", join(r));
+    check(6, "Same start and destination (Mandala to Mandala)", "0.00 km", distText(g, "Mandala", "Mandala"));
+    check(7, "Direct road Mandala to Blantyre Market", "0.21 km", distText(g, "Mandala", "Blantyre Market"));
+    check(8, "Reverse journey Blantyre Market to Limbe Market", "7.76 km", distText(g, "Blantyre Market", "Limbe Market"));
+    check(9, "Red Cross Malawi to Blantyre Clock Tower (beats 3.40 km direct road)", "3.16 km",
+          distText(g, "Red Cross Malawi", "Blantyre Clock Tower"));
+    check(10, "Limbe Market to Blantyre Clock Tower (farthest place)", "10.16 km",
+          distText(g, "Limbe Market", "Blantyre Clock Tower"));
+    check(11, "Limbe Market to St Columba (via Limbe Health Centre)", "3.65 km", distText(g, "Limbe Market", "St Columba"));
+    check(12, "Limbe Market to CI Primary School", "8.06 km", distText(g, "Limbe Market", "CI Primary School"));
+
+    string err;
+    try { distText(g, "Limbe Market", "Zomba"); err = "no error"; }
+    catch (exception& e) { err = string("error: ") + e.what(); }
+    check(13, "Unknown place name 'Zomba'", "error: unknown place: Zomba", err);
+    check(14, "Negative road length", "error: negative road length: A - B", errorFrom("A,B,-5\n"));
+    check(15, "Line with missing distance", "error: bad format on line 1", errorFrom("A,B\n"));
+    check(16, "Non-numeric distance", "error: bad distance on line 1", errorFrom("A,B,12km\n"));
+    check(17, "Blank place name", "error: empty place name", errorFrom(",B,100\n"));
+    check(18, "Self-loop road", "error: self-loop not allowed: A", errorFrom("A,A,100\n"));
+
+    Graph h1 = loadGraph("A,B,100\nC,D,200\n");
+    check(19, "Unreachable place (A to D in two separate parts)", "no route", distText(h1, "A", "D"));
+    Graph h2 = loadGraph("A,B,0\nB,C,300\n");
+    check(20, "Zero-length road is accepted", "0.30 km", distText(h2, "A", "C"));
+    Graph h3 = loadGraph("A,B,900\nA,B,400\n");
+    check(21, "Parallel roads: shorter one is used", "0.40 km", distText(h3, "A", "B"));
+
+    vector<Edge> mst = kruskal(g);
+    check(22, "Kruskal MST number of edges", "21", toStr((long long)mst.size()));
+    check(23, "Kruskal MST total length", "20.66 km", km(totalLength(mst)));
+    bool same = true;
+    for (int s = 0; s < g.V(); s++) {
+        vector<Edge> p = prim(g, s);
+        if (p.size() != 21 || totalLength(p) != totalLength(mst)) same = false;
+    }
+    check(24, "Prim from all 22 start places equals Kruskal", "true", same ? "true" : "false");
+    Graph t = subgraph(g, mst);
+    check(25, "Limbe Market to Blantyre Market inside the MST", "7.96 km",
+          distText(t, "Limbe Market", "Blantyre Market"));
+
+    cout << "\n" << passed << " passed, " << failed << " failed\n";
+}
+
+// ---------------------------------------------------------------------
+// 7. MAIN PROGRAM (menu)
+// ---------------------------------------------------------------------
+int main(int argc, char* argv[]) {
+    Graph g = loadGraph(ROAD_DATA);
+
+    if (argc > 1 && string(argv[1]) == "test") {
+        runTests();
+        return failed == 0 ? 0 : 1;
+    }
+
+    cout << "Blantyre road network: " << g.V() << " places, " << g.E()
+         << " roads, total " << km(totalLength(g.edges)) << "\n";
+
+    while (true) {
+        cout << "\n1. Shortest route between two places\n"
+             << "2. Shortest route with Dijkstra steps shown\n"
+             << "3. Minimum spanning tree (Kruskal)\n"
+             << "4. Run the 25 automated tests\n"
+             << "5. List all places\n"
+             << "0. Exit\n"
+             << "Choice: ";
+        string choice;
+        if (!getline(cin, choice) || choice == "0") break;
+
+        try {
+            if (choice == "1" || choice == "2") {
+                string from, to;
+                cout << "From: "; getline(cin, from);
+                cout << "To:   "; getline(cin, to);
+                vector<string> route;
+                long long d = shortestRoute(g, from, to, route, choice == "2");
+                if (d == INF) cout << "No route exists.\n";
+                else {
+                    cout << "Route: ";
+                    for (size_t i = 0; i < route.size(); i++) cout << (i ? " -> " : "") << route[i];
+                    cout << "\nDistance: " << km(d) << "\n";
+                }
+            } else if (choice == "3") {
+                vector<Edge> mst = kruskal(g);
+                for (size_t i = 0; i < mst.size(); i++)
+                    cout << "  " << g.name[mst[i].u] << " - " << g.name[mst[i].v]
+                         << "  " << km(mst[i].w) << "\n";
+                cout << "Roads: " << mst.size() << "   Total: " << km(totalLength(mst)) << "\n";
+            } else if (choice == "4") {
+                runTests();
+            } else if (choice == "5") {
+                for (int i = 0; i < g.V(); i++) cout << "  " << i + 1 << ". " << g.name[i] << "\n";
+            } else {
+                cout << "Please choose 0-5.\n";
+            }
+        } catch (exception& e) {
+            cout << "Error: " << e.what() << "\n";
+        }
+    }
+    return 0;
+}
+</script>
+<script>
+"use strict";
+// ======================= ROAD DATA (exactly as drawn) =======================
+const ROAD_DATA = `Limbe Market,Limbe Health Centre,450
+Limbe Market,Liquid Lounge Roundabout,700
+Limbe Market,Yanakis Roundabout,1200
+Limbe Health Centre,Liquid Lounge Roundabout,350
+Limbe Health Centre,St Columba,3200
+Liquid Lounge Roundabout,Puma Energy Kanjedza,1000
+Liquid Lounge Roundabout,MASM,550
+MASM,Yanakis Roundabout,1000
+Yanakis Roundabout,Reunion Insurance Roundabout,1100
+Reunion Insurance Roundabout,Independence Arch,1000
+Puma Energy Kanjedza,Automotive Products Limited,1600
+Puma Energy Kanjedza,Independence Arch,2900
+Automotive Products Limited,St Columba,850
+Automotive Products Limited,Kamba Pork Market,2500
+Automotive Products Limited,Chichiri Shopping Mall,1500
+Independence Arch,Chichiri Shopping Mall,2900
+St Columba,Stereo Night Club,3100
+Kamba Pork Market,Stereo Night Club,300
+Kamba Pork Market,Red Cross Malawi,1200
+Stereo Night Club,Rosewood Mall,700
+Rosewood Mall,CI Primary School,1600
+Rosewood Mall,Red Cross Malawi,1400
+Red Cross Malawi,Mandala,550
+Red Cross Malawi,Chichiri Shopping Mall,2300
+Red Cross Malawi,Blantyre Clock Tower,3400
+Mandala,Blantyre Market,210
+CI Primary School,Blantyre Market,300
+Blantyre Market,PA Nandos,1200
+PA Nandos,Blantyre Clock Tower,1200
+Chichiri Shopping Mall,Castel,1900
+Castel,HHI,1400
+HHI,Blantyre Clock Tower,2500`;
+
+// Position of each place on the hand drawing (circle number, x, y) and where its name is written.
+// [num, x, y, label dx, label dy, anchor, area]
+const LAYOUT = {
+  "Limbe Market":                 [1, 105, 555, -7, -38, "start", "Limbe side"],
+  "Limbe Health Centre":          [2, 405, 365, 0, -41, "middle", "Limbe side"],
+  "Liquid Lounge Roundabout":     [3, 330, 555, -17, 58, "end", "Limbe side"],
+  "MASM":                         [4, 385, 720, 36, 10, "start", "Limbe side"],
+  "Yanakis Roundabout":           [5, 310, 897, -36, 10, "end", "Limbe side"],
+  "Reunion Insurance Roundabout": [6, 528, 1163, 0, 60, "middle", "Limbe side"],
+  "Independence Arch":            [7, 865, 1112, 0, 60, "middle", "Middle"],
+  "Puma Energy Kanjedza":         [8, 593, 553, 0, -38, "middle", "Limbe side"],
+  "Automotive Products Limited":  [9, 790, 553, 29, 60, "start", "Middle"],
+  "Chichiri Shopping Mall":       [10, 1097, 1088, -24, -38, "end", "Middle"],
+  "St Columba":                   [11, 1068, 220, 0, -41, "middle", "Middle"],
+  "Kamba Pork Market":            [12, 1160, 560, 0, -38, "middle", "Middle"],
+  "Stereo Night Club":            [13, 1440, 557, 0, -38, "middle", "Middle"],
+  "Rosewood Mall":                [14, 1660, 775, 26, 58, "start", "Blantyre side"],
+  "Red Cross Malawi":             [15, 1380, 1050, 0, 62, "middle", "Blantyre side"],
+  "Castel":                       [16, 1260, 1228, -29, 48, "end", "Blantyre side"],
+  "HHI":                          [17, 1475, 1308, 0, 60, "middle", "Blantyre side"],
+  "Blantyre Clock Tower":         [18, 1665, 1190, 29, 55, "start", "Blantyre side"],
+  "Mandala":                      [19, 1615, 932, 0, 60, "middle", "Blantyre side"],
+  "PA Nandos":                    [20, 1840, 1030, 34, 10, "start", "Blantyre side"],
+  "CI Primary School":            [21, 1805, 668, 0, -41, "middle", "Blantyre side"],
+  "Blantyre Market":              [22, 1937, 840, 36, 10, "start", "Blantyre side"]
+};
+
+// ======================= GRAPH =======================
+function GraphError(msg) { const e = new Error(msg); e.name = "GraphError"; return e; }
+
+function loadGraph(text) {
+  const g = { id: new Map(), name: [], adj: [], edges: [] };
+  const addPlace = p => {
+    if (p === "") throw GraphError("empty place name");
+    if (g.id.has(p)) return g.id.get(p);
+    g.id.set(p, g.name.length); g.name.push(p); g.adj.push([]);
+    return g.name.length - 1;
+  };
+  text.split("\n").forEach((line, i) => {
+    line = line.replace(/\r$/, "");
+    if (line === "") return;
+    const parts = line.split(",");
+    if (parts.length < 3) throw GraphError("bad format on line " + (i + 1));
+    const a = parts[0], b = parts[1], w = parts.slice(2).join(",");
+    if (!/^-?\d+$/.test(w)) throw GraphError("bad distance on line " + (i + 1));
+    const metres = parseInt(w, 10);
+    if (metres < 0) throw GraphError("negative road length: " + a + " - " + b);
+    if (a === b) throw GraphError("self-loop not allowed: " + a);
+    const u = addPlace(a), v = addPlace(b), e = g.edges.length;
+    g.adj[u].push({ v, w: metres, e }); g.adj[v].push({ v: u, w: metres, e });
+    g.edges.push({ u, v, w: metres });
+  });
+  return g;
+}
+function getId(g, p) { if (!g.id.has(p)) throw GraphError("unknown place: " + p); return g.id.get(p); }
+const km = m => (m / 1000).toFixed(2) + " km";
+const k2 = m => (m / 1000).toFixed(2);
+
+// Binary min-heap with a compare function
+class MinHeap {
+  constructor(less) { this.a = []; this.less = less; }
+  get size() { return this.a.length; }
+  push(x) { const a = this.a; a.push(x); let i = a.length - 1;
+    while (i > 0) { const p = (i - 1) >> 1; if (!this.less(a[i], a[p])) break; [a[i], a[p]] = [a[p], a[i]]; i = p; } }
+  pop() { const a = this.a, top = a[0], last = a.pop();
+    if (a.length) { a[0] = last; let i = 0;
+      for (;;) { const l = 2 * i + 1, r = l + 1; let m = i;
+        if (l < a.length && this.less(a[l], a[m])) m = l;
+        if (r < a.length && this.less(a[r], a[m])) m = r;
+        if (m === i) break; [a[i], a[m]] = [a[m], a[i]]; i = m; } }
+    return top; }
+}
+
+// ======================= DIJKSTRA =======================
+// Records every step so it can be shown on the map. Ties are broken by place number, as in the C++ code.
+function dijkstra(g, src, target, stopAtTarget) {
+  const V = g.name.length, dist = Array(V).fill(Infinity), prev = Array(V).fill(-1), prevEdge = Array(V).fill(-1);
+  const settled = Array(V).fill(false), frames = [];
+  const snap = (extra) => frames.push(Object.assign({ dist: dist.slice(), prev: prev.slice(), prevEdge: prevEdge.slice(), settled: settled.slice() }, extra));
+  const pq = new MinHeap((x, y) => x.d < y.d || (x.d === y.d && x.u < y.u));
+  dist[src] = 0; pq.push({ d: 0, u: src });
+  snap({ kind: "init", current: -1, notes: [g.name[src] + " = 0 km; every other place = ∞"], checked: [], improved: [] });
+  while (pq.size) {
+    const { d, u } = pq.pop();
+    if (d > dist[u]) {                                   // stale entry: ignore
+      snap({ kind: "stale", current: u, staleD: d, notes: [], checked: [], improved: [] });
+      continue;
+    }
+    settled[u] = true;
+    const notes = [], checked = [], improved = [];
+    for (const { v, w, e } of g.adj[u]) {
+      if (settled[v]) continue;
+      checked.push(e);
+      if (dist[u] + w < dist[v]) {                       // relaxation
+        notes.push(`${g.name[v]}: ${dist[v] === Infinity ? "∞" : k2(dist[v])} → ${k2(dist[u] + w)}  (${k2(dist[u])} + ${k2(w)})`);
+        dist[v] = dist[u] + w; prev[v] = u; prevEdge[v] = e; improved.push(e);
+        pq.push({ d: dist[v], u: v });
+      } else {
+        notes.push(`${g.name[v]} stays ${k2(dist[v])}  (${k2(dist[u])} + ${k2(w)} = ${k2(dist[u] + w)} is not shorter)`);
+      }
+    }
+    snap({ kind: "settle", current: u, notes, checked, improved });
+    if (stopAtTarget && u === target) break;
+  }
+  return { frames, dist, prev, prevEdge };
+}
+function routeTo(prev, t) { const r = []; for (let x = t; x !== -1; x = prev[x]) r.push(x); return r.reverse(); }
+function shortestRoute(g, from, to) {
+  const s = getId(g, from), t = getId(g, to);
+  const res = dijkstra(g, s, t, false);
+  if (res.dist[t] === Infinity) return { dist: Infinity, route: [] };
+  return { dist: res.dist[t], route: routeTo(res.prev, t).map(i => g.name[i]) };
+}
+
+// ======================= KRUSKAL =======================
+function kruskal(g) {
+  const order = g.edges.map((e, i) => i).sort((a, b) => g.edges[a].w - g.edges[b].w || a - b);  // stable sort
+  const parent = g.name.map((_, i) => i);
+  const find = x => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+  const steps = [], tree = [];
+  for (const i of order) {
+    const { u, v } = g.edges[i];
+    const a = find(u), b = find(v);
+    const full = tree.length === g.name.length - 1;
+    if (a === b) steps.push({ e: i, added: false, full });   // would make a cycle
+    else { parent[a] = b; tree.push(i); steps.push({ e: i, added: true }); }
+  }
+  return { tree, steps };
+}
+
+// ======================= PRIM =======================
+function prim(g, start) {
+  const inTree = Array(g.name.length).fill(false), tree = [], steps = [];
+  const pq = new MinHeap((x, y) => x.w < y.w || (x.w === y.w && x.to < y.to));
+  const addPlace = p => { inTree[p] = true; for (const { v, w, e } of g.adj[p]) if (!inTree[v]) pq.push({ w, from: p, to: v, e }); };
+  addPlace(start);
+  while (pq.size && tree.length < g.name.length - 1) {
+    const it = pq.pop();
+    if (inTree[it.to]) continue;
+    tree.push(it.e); steps.push(it); addPlace(it.to);
+  }
+  return { tree, steps };
+}
+const total = (g, ids) => ids.reduce((s, i) => s + g.edges[i].w, 0);
+function subgraph(g, ids) {
+  return loadGraph(ids.map(i => `${g.name[g.edges[i].u]},${g.name[g.edges[i].v]},${g.edges[i].w}`).join("\n"));
+}
+
+
+
+function errorFrom(text) { try { loadGraph(text); return "no error"; } catch (e) { return "error: " + e.message; } }
+function distText(g, a, b) { const r = shortestRoute(g, a, b); return r.dist === Infinity ? "no route" : km(r.dist); }
+function runTests() {
+  const g = loadGraph(ROAD_DATA), T = [];
+  const check = (test, input, expected, actual) => T.push({ test, input, expected, actual, ok: expected === actual });
+  const catchErr = f => { try { f(); return "no error"; } catch (e) { return "error: " + e.message; } };
+  check("Number of places loaded", "Road data", "22", String(g.name.length));
+  check("Number of roads loaded", "Road data", "32", String(g.edges.length));
+  check("Total road length", "Road data", "46.06 km", km(total(g, g.edges.map((_, i) => i))));
+  check("Limbe Market to Blantyre Market", "Limbe Market → Blantyre Market", "7.76 km", distText(g, "Limbe Market", "Blantyre Market"));
+  check("Route Limbe Market to Blantyre Market", "Limbe Market → Blantyre Market",
+    "Limbe Market > Liquid Lounge Roundabout > Puma Energy Kanjedza > Automotive Products Limited > Kamba Pork Market > Red Cross Malawi > Mandala > Blantyre Market",
+    shortestRoute(g, "Limbe Market", "Blantyre Market").route.join(" > "));
+  check("Same start and destination", "Mandala → Mandala", "0.00 km", distText(g, "Mandala", "Mandala"));
+  check("Direct road", "Mandala → Blantyre Market", "0.21 km", distText(g, "Mandala", "Blantyre Market"));
+  check("Reverse journey (undirected)", "Blantyre Market → Limbe Market", "7.76 km", distText(g, "Blantyre Market", "Limbe Market"));
+  check("Shorter than the 3.40 km direct road", "Red Cross Malawi → Blantyre Clock Tower", "3.16 km", distText(g, "Red Cross Malawi", "Blantyre Clock Tower"));
+  check("Farthest place", "Limbe Market → Blantyre Clock Tower", "10.16 km", distText(g, "Limbe Market", "Blantyre Clock Tower"));
+  check("Route via Limbe Health Centre", "Limbe Market → St Columba", "3.65 km", distText(g, "Limbe Market", "St Columba"));
+  check("Limbe Market to CI Primary School", "Limbe Market → CI Primary School", "8.06 km", distText(g, "Limbe Market", "CI Primary School"));
+  check("Unknown place name", "Limbe Market → Zomba", "error: unknown place: Zomba", catchErr(() => distText(g, "Limbe Market", "Zomba")));
+  check("Negative road length", 'Road line "A,B,-5"', "error: negative road length: A - B", errorFrom("A,B,-5"));
+  check("Line with missing distance", 'Road line "A,B"', "error: bad format on line 1", errorFrom("A,B"));
+  check("Non-numeric distance", 'Road line "A,B,12km"', "error: bad distance on line 1", errorFrom("A,B,12km"));
+  check("Blank place name", 'Road line ",B,100"', "error: empty place name", errorFrom(",B,100"));
+  check("Self-loop road", 'Road line "A,A,100"', "error: self-loop not allowed: A", errorFrom("A,A,100"));
+  check("Unreachable place", 'Roads "A,B,100" and "C,D,200"; A → D', "no route", distText(loadGraph("A,B,100\nC,D,200"), "A", "D"));
+  check("Zero-length road is accepted", 'Roads "A,B,0" and "B,C,300"; A → C', "0.30 km", distText(loadGraph("A,B,0\nB,C,300"), "A", "C"));
+  check("Parallel roads: shorter one used", 'Roads "A,B,900" and "A,B,400"; A → B', "0.40 km", distText(loadGraph("A,B,900\nA,B,400"), "A", "B"));
+  const k = kruskal(g);
+  check("Kruskal MST number of edges", "Kruskal on the graph", "21", String(k.tree.length));
+  check("Kruskal MST total length", "Kruskal on the graph", "20.66 km", km(total(g, k.tree)));
+  let same = true; for (let s = 0; s < g.name.length; s++) { const p = prim(g, s); if (p.tree.length !== 21 || total(g, p.tree) !== total(g, k.tree)) same = false; }
+  check("Prim from all 22 places equals Kruskal", "Prim from each place", "true", String(same));
+  check("Route inside the MST", "Limbe Market → Blantyre Market, MST roads only", "7.96 km", distText(subgraph(g, k.tree), "Limbe Market", "Blantyre Market"));
+  return T;
+}
+
+
+// ======================= PAGE =======================
+const G = loadGraph(ROAD_DATA);
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const num = i => LAYOUT[G.name[i]][0];
+const byNum = G.name.map((_, i) => i).sort((a, b) => num(a) - num(b));
+const edgeBetween = (a, b) => G.adj[a].find(x => x.v === b).e;
+
+// ---- place pickers: dropdown + typing (name, part of a name, or number) ----
+function findPlace(text) {
+  const q = text.trim().toLowerCase();
+  if (!q) return { err: "" };
+  if (/^\d+$/.test(q)) { const i = byNum.find(i => num(i) === +q); return i === undefined ? { err: `There is no place number ${q}. Use 1 to 22.` } : { i }; }
+  const exact = byNum.find(i => G.name[i].toLowerCase() === q);
+  if (exact !== undefined) return { i: exact };
+  const hits = byNum.filter(i => G.name[i].toLowerCase().includes(q));
+  if (hits.length === 1) return { i: hits[0] };
+  if (hits.length > 1) return { err: `"${text.trim()}" matches ${hits.length} places: ${hits.map(i => G.name[i]).join(", ")}. Type more of the name.` };
+  return { err: `Place not found: "${text.trim()}". Try a name such as Mandala or a number from 1 to 22.` };
+}
+function makePicker(key, start) {
+  const sel = $(key + "Sel"), txt = $(key + "Txt"), hint = $(key + "Hint");
+  sel.innerHTML = byNum.map(i => `<option value="${i}">${num(i)}. ${esc(G.name[i])}</option>`).join("");
+  sel.value = start;
+  const p = { ok: true, get value() { return +sel.value; } };
+  sel.addEventListener("change", () => { txt.value = ""; hint.textContent = ""; hint.className = "hint"; p.ok = true; });
+  txt.addEventListener("input", () => {
+    const r = findPlace(txt.value);
+    if (r.i !== undefined) { sel.value = r.i; hint.textContent = `Selected: ${num(r.i)}. ${G.name[r.i]}`; hint.className = "hint"; p.ok = true; }
+    else { hint.textContent = r.err; hint.className = r.err ? "hint bad" : "hint"; p.ok = !r.err; }
+  });
+  txt.addEventListener("keydown", ev => { if (ev.key === "Enter") p.onEnter && p.onEnter(); });
+  return p;
+}
+const S = makePicker("s", getId(G, "Limbe Market")), T = makePicker("t", getId(G, "Blantyre Market"));
+const P = makePicker("p", getId(G, "Limbe Market")), A = makePicker("a", getId(G, "Limbe Market"));
+
+// ---- graph drawing (positions from the hand drawing) ----
+const NS = "http://www.w3.org/2000/svg", svg = $("graph");
+const mk = (tag, attrs, parent) => { const el = document.createElementNS(NS, tag); for (const k in attrs) el.setAttribute(k, attrs[k]); parent.appendChild(el); return el; };
+const gE = mk("g", {}, svg), gN = mk("g", {}, svg);
+const edgeEls = G.edges.map(e => {
+  const [, x1, y1] = LAYOUT[G.name[e.u]], [, x2, y2] = LAYOUT[G.name[e.v]];
+  const g = mk("g", { class: "e" }, gE);
+  mk("line", { x1, y1, x2, y2 }, g);
+  mk("text", { x: (x1 + x2) / 2, y: (y1 + y2) / 2 + 9, "text-anchor": "middle" }, g).textContent = (e.w / 1000) + " km";
+  return g;
+});
+const nodeEls = G.name.map(p => {
+  const [n, x, y, dx, dy, anchor] = LAYOUT[p];
+  const g = mk("g", { class: "n" }, gN);
+  mk("circle", { cx: x, cy: y, r: 26 }, g);
+  mk("text", { class: "num", x, y }, g).textContent = n;
+  mk("text", { class: "lbl", x: x + dx, y: y + dy, "text-anchor": anchor }, g).textContent = p;
+  return g;
+});
+function draw(opts) {
+  edgeEls.forEach(el => el.setAttribute("class", "e"));
+  nodeEls.forEach(el => el.setAttribute("class", "n"));
+  if (opts.tree) { edgeEls.forEach((el, i) => el.classList.add(opts.tree.includes(i) ? "tree" : "faded")); }
+  if (opts.path) opts.path.forEach((p, j) => { nodeEls[p].classList.add("on"); if (j) edgeEls[edgeBetween(opts.path[j - 1], p)].classList.add("path"); });
+}
+
+// ---- shortest route ----
+function findRoute() {
+  const out = $("out");
+  if (!S.ok || !T.ok) { out.innerHTML = `<p class="err">Fix the place name above first.</p>`; return; }
+  const s = S.value, t = T.value, res = dijkstra(G, s, t, false);
+  const r = routeTo(res.prev, t);
+  const parts = r.slice(1).map((p, j) => k2(G.edges[edgeBetween(r[j], p)].w));
+  let html = `<p class="metric">${km(res.dist[t])}</p><div class="route">${r.map(i => `${num(i)}. ${esc(G.name[i])}`).join(" → ")}</div>` +
+    (parts.length ? `<div class="sum">${parts.join(" + ")} = ${k2(res.dist[t])} km</div>` : `<div class="sum">Start and destination are the same place.</div>`);
+  if ($("steps").checked) {
+    const run = dijkstra(G, s, t, true); let n = 0;
+    html += `<p class="muted" style="margin:12px 0 4px">Each step settles the unsettled place with the smallest distance, then updates its neighbours.</p>
+      <div class="scroll"><table><thead><tr><th class="r">Step</th><th>Settle</th><th class="r">km</th><th>Neighbours updated</th></tr></thead><tbody>` +
+      run.frames.filter(f => f.kind === "settle").map(f => `<tr><td class="r">${++n}</td><td>${esc(G.name[f.current])}</td><td class="r">${k2(f.dist[f.current])}</td><td>${f.notes.map(esc).join("<br>") || "—"}</td></tr>`).join("") +
+      `</tbody></table></div>`;
+  }
+  out.innerHTML = html;
+  draw({ path: r });
+}
+$("go").onclick = findRoute; S.onEnter = T.onEnter = findRoute;
+$("steps").addEventListener("change", findRoute);
+
+// ---- MST ----
+function buildMst() {
+  const mo = $("mo");
+  if ($("alg").value === "prim" && !P.ok) { mo.innerHTML = `<p class="err">Fix the place name above first.</p>`; return; }
+  const prims = $("alg").value === "prim";
+  const ids = prims ? prim(G, P.value).tree : kruskal(G).tree;
+  const sum = total(G, ids), all = total(G, G.edges.map((_, i) => i));
+  mo.innerHTML = `<p class="metric">${km(sum)}</p>${ids.length} roads join all 22 places (full network ${km(all)}). ` +
+    (prims ? `Prim started from ${esc(G.name[P.value])}; roads listed in the order added.` : `Kruskal adds roads from shortest to longest, skipping any that would make a cycle.`) +
+    `<div class="scroll" style="margin-top:8px"><table><thead><tr><th class="r">#</th><th>Road</th><th class="r">km</th></tr></thead><tbody>` +
+    ids.map((i, j) => `<tr><td class="r">${j + 1}</td><td>${esc(G.name[G.edges[i].u])} — ${esc(G.name[G.edges[i].v])}</td><td class="r">${k2(G.edges[i].w)}</td></tr>`).join("") + `</tbody></table></div>
+    <p class="muted" style="margin-top:8px">The MST is the shortest total length of road needed to connect every place, for example the least cable or pipe to lay along the roads.</p>`;
+  draw({ tree: ids });
+}
+$("mst").onclick = buildMst; P.onEnter = buildMst;
+
+// ---- all distances ----
+function allDistances() {
+  if (!A.ok) { $("allout").innerHTML = `<p class="err">Fix the place name above first.</p>`; return; }
+  const r = dijkstra(G, A.value, -1, false);
+  $("allout").innerHTML = `<table><thead><tr><th>Place</th><th class="r">km</th><th>Previous</th></tr></thead><tbody>` +
+    byNum.map(i => `<tr><td>${num(i)}. ${esc(G.name[i])}</td><td class="r">${r.dist[i] === Infinity ? "∞" : k2(r.dist[i])}</td><td>${r.prev[i] < 0 ? "—" : esc(G.name[r.prev[i]])}</td></tr>`).join("") + `</tbody></table>`;
+}
+$("allgo").onclick = allDistances; A.onEnter = allDistances;
+
+// ---- road data ----
+$("edges").innerHTML = G.edges.map((e, i) => `<tr><td>${i + 1}</td><td>${num(e.u)}. ${esc(G.name[e.u])}</td><td>${num(e.v)}. ${esc(G.name[e.v])}</td><td class="r">${k2(e.w)}</td></tr>`).join("");
+$("stats").textContent = `${G.name.length} places, ${G.edges.length} roads; total length of all roads ${km(total(G, G.edges.map((_, i) => i)))}.`;
+
+// ---- tests ----
+$("test").onclick = () => {
+  const R = runTests(), ok = R.filter(t => t.ok).length;
+  $("tests").innerHTML = `<p><span class="pill ${ok === R.length ? "ok" : "bad"}">${ok}/${R.length} tests passed</span></p><div class="scroll"><table><thead><tr><th>ID</th><th>Test</th><th>Input</th><th>Expected</th><th>Actual</th><th>Result</th></tr></thead><tbody>` +
+    R.map((t, i) => `<tr class="${t.ok ? "pass" : "fail"}"><td>T${i + 1}</td><td>${esc(t.test)}</td><td>${esc(t.input)}</td><td>${esc(t.expected.replace(/ > /g, " → "))}</td><td>${esc(t.actual.replace(/ > /g, " → "))}</td><td>${t.ok ? "PASS" : "FAIL"}</td></tr>`).join("") + `</tbody></table></div>`;
+};
+
+// ---- C++ code ----
+$("code").textContent = $("cppSource").textContent.replace(/^\n/, "");
+$("toggleCode").onclick = () => { const c = $("code"); c.hidden = !c.hidden; $("toggleCode").textContent = c.hidden ? "Show code" : "Hide code"; };
+$("copy").onclick = () => {
+  const fallback = () => { $("code").hidden = false; $("toggleCode").textContent = "Hide code"; const r = document.createRange(); r.selectNodeContents($("code")); const s = getSelection(); s.removeAllRanges(); s.addRange(r); $("copyMsg").textContent = "Code selected. Press Ctrl+C to copy."; };
+  try { navigator.clipboard.writeText($("code").textContent).then(() => { $("copyMsg").textContent = "Copied. Paste it into onlinegdb.com."; }, fallback); } catch (e) { fallback(); }
+};
+
+findRoute();
+</script>
+
+</body>
+</html>
